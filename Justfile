@@ -1,0 +1,3 @@
+format:
+    oxfmt
+    cargo fmt
