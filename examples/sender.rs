@@ -1,8 +1,3 @@
-use std::{
-    io::Write,
-    net::{TcpListener, TcpStream, UdpSocket},
-};
-
 use reliable_over_udp::ReliableSocket;
 
 fn main() -> anyhow::Result<()> {
@@ -11,7 +6,7 @@ fn main() -> anyhow::Result<()> {
 
     let buf = b"Hello, World";
 
-    socket.send_to(buf, "0.0.0.0:34254".parse()?);
+    socket.send_to(buf, "0.0.0.0:34254".parse()?)?;
 
     Ok(())
 }

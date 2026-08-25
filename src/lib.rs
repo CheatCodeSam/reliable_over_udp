@@ -3,6 +3,11 @@ use std::net::{SocketAddr, UdpSocket};
 
 // TODO: Add real error handling
 
+enum SenderState {
+    WaitForCall,
+    WaitForAck,
+}
+
 pub struct ReliableSocket {
     addr: SocketAddr,
     socket: UdpSocket,

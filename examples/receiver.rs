@@ -1,8 +1,4 @@
 use reliable_over_udp::ReliableSocket;
-use std::io::prelude::*;
-use std::net::SocketAddr;
-use std::net::{TcpListener, UdpSocket};
-use std::result::Result::Ok;
 
 fn main() -> anyhow::Result<()> {
     let addr = "0.0.0.0:34254".parse()?;
