@@ -79,6 +79,6 @@ fn generate_checksum(buf: &[u8]) -> u16 {
     if csum == 0 { 0xffff } else { csum }
 }
 
-fn validate_checksum(checksum: &Bytes) -> bool {
-    false
+fn validate_checksum(checksum: u16, buf: &[u8]) -> bool {
+    checksum == generate_checksum(buf)
 }
