@@ -25,15 +25,17 @@ impl ReliableSocket {
 
     pub fn send_to(&self, buf: &Bytes, addr: SocketAddr) -> Result<()> {
         // Chop into MSS
-        let mut iter = buf.chunks(MSS_SIZE);
-
-        for chunk in iter {
-            self.socket.send_to(chunk, addr)?;
-        }
+        let iter = buf.chunks(MSS_SIZE);
 
         // for each segment
-        // send segment
-        // wait for ack
+        for chunk in iter {
+            // send segment
+            self.socket.send_to(chunk, addr)?;
+            let mut ack_buffer = [0; MSS_SIZE];
+            let (_amt, src) = self.socket.recv_from(&mut ack_buffer)?;
+            println!("{}", str::from_utf8(&ack_buffer).unwrap());
+            // wait for ack
+        }
 
         Ok(())
     }
@@ -47,7 +49,14 @@ impl ReliableSocket {
         // if segment matches checksum
         //      nack
 
-        let (_amt, _src) = self.socket.recv_from(buf)?;
+        loop {
+            let mut hold_buffer = [0; MSS_SIZE];
+            let (amt, src) = self.socket.recv_from(&mut hold_buffer)?;
+            let bytes = Bytes::copy_from_slice(&hold_buffer[..amt]);
+            println!("{:?}", &bytes);
+            self.socket.send_to(b"ACK", src)?;
+        }
+
         Ok(())
     }
 }
