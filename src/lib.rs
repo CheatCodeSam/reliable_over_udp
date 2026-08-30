@@ -30,10 +30,11 @@ impl ReliableSocket {
         // for each segment
         for chunk in iter {
             // send segment
+            let checksum = generate_checksum(chunk);
             self.socket.send_to(chunk, addr)?;
             let mut ack_buffer = [0; MSS_SIZE];
             let (_amt, src) = self.socket.recv_from(&mut ack_buffer)?;
-            println!("{}", str::from_utf8(&ack_buffer).unwrap());
+            println!("{}{}", checksum, str::from_utf8(&ack_buffer).unwrap());
             // wait for ack
         }
 
@@ -59,4 +60,25 @@ impl ReliableSocket {
 
         Ok(())
     }
+}
+
+fn generate_checksum(buf: &[u8]) -> u16 {
+    let mut sum: u32 = 0;
+    let chunks = buf.chunks(2);
+    for chunk in chunks {
+        if chunk.len() > 1 {
+            sum += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
+        } else {
+            sum += (chunk[0] as u32) << 8;
+        }
+    }
+    while sum >> 16 != 0 {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    let csum = !sum as u16;
+    if csum == 0 { 0xffff } else { csum }
+}
+
+fn validate_checksum(checksum: &Bytes) -> bool {
+    false
 }
