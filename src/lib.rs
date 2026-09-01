@@ -13,7 +13,6 @@ enum SenderState {
 }
 
 pub struct ReliableSocket {
-    addr: SocketAddr,
     socket: UdpSocket,
     sending_state: SenderState,
 }
@@ -23,18 +22,21 @@ impl ReliableSocket {
         let socket = UdpSocket::bind(addr)?;
 
         Ok(Self {
-            addr,
             socket,
             sending_state: SenderState::WaitForCall,
         })
     }
 
     pub fn send_to(&mut self, buf: &Bytes, addr: SocketAddr) -> Result<()> {
-        let iter = buf.chunks(MSS_SIZE - 2);
+        let iter = buf.chunks(MSS_SIZE - 3);
 
         self.sending_state = SenderState::WaitForAck;
+        let mut packet_number = 1;
         for chunk in iter {
-            self.send_chunk(addr, chunk)?;
+            packet_number = packet_number ^ 1;
+            println!("{packet_number}");
+
+            self.send_chunk(addr, chunk, packet_number)?;
 
             loop {
                 let mut ack_buffer = [0; MSS_SIZE];
@@ -42,10 +44,11 @@ impl ReliableSocket {
 
                 let result = String::from_utf8_lossy(&ack_buffer[..amt]).to_string();
                 println!("{result}");
-                if result == "ACK" {
+                let expected_response = format!("ACK{packet_number}");
+                if result == expected_response {
                     break;
                 } else {
-                    self.send_chunk(addr, chunk)?;
+                    self.send_chunk(addr, chunk, packet_number)?;
                 }
             }
         }
@@ -54,7 +57,12 @@ impl ReliableSocket {
         Ok(())
     }
 
-    fn send_chunk(&self, addr: SocketAddr, chunk: &[u8]) -> Result<(), anyhow::Error> {\
+    fn send_chunk(
+        &self,
+        addr: SocketAddr,
+        chunk: &[u8],
+        packet_number: u8,
+    ) -> Result<(), anyhow::Error> {
         // 50% chance for data to get corrupted.
         let mut rng = rand::rng();
         let random_number = rng.random_range(0..=1);
@@ -65,30 +73,46 @@ impl ReliableSocket {
 
         let checksum_bytes = checksum.to_be_bytes();
 
-        let res: Vec<u8> = [&checksum_bytes[..], chunk].concat();
+        let res: Vec<u8> = [&checksum_bytes[..], &[packet_number], chunk].concat();
         self.socket.send_to(&res, addr)?;
         Ok(())
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> Result<()> {
+        let mut packet_number_waiting_for = 0;
         loop {
             let mut hold_buffer = [0; MSS_SIZE];
             let (amt, src) = self.socket.recv_from(&mut hold_buffer)?;
             let bytes = Bytes::copy_from_slice(&hold_buffer[..amt]);
 
-            let data = &bytes[2..];
+            let data = &bytes[3..];
+            let packet_number = &bytes[2];
             let checksum = &bytes[..2];
 
             let number = be_u8_to_u16(checksum);
 
             let valid_checksum = validate_checksum(number, data);
-            if valid_checksum {
-                self.socket.send_to(b"ACK", src)?;
+            let correct_packet_number = *packet_number == packet_number_waiting_for;
+            if valid_checksum && correct_packet_number {
+                let mut send = format!("ACK{packet_number}");
+
+                // 50% chance for data to get corrupted.
+                let mut rng = rand::rng();
+                let random_number = rng.random_range(0..=1);
+                if random_number == 0 {
+                    send = "FES#".into();
+                }
+
+                self.socket.send_to(&send.into_bytes(), src)?;
+                packet_number_waiting_for = packet_number_waiting_for ^ 1;
+            } else if valid_checksum && !correct_packet_number {
+                let send = format!("ACK{packet_number}");
+                self.socket.send_to(&send.into_bytes(), src)?;
             } else {
-                self.socket.send_to(b"NACK", src)?;
+                let send = format!("NAK{packet_number}");
+                self.socket.send_to(&send.into_bytes(), src)?;
             }
-            println!("{}", validate_checksum(number, data));
-            println!("{:?}", &bytes);
+            println!("{:?}", str::from_utf8(data)?);
         }
 
         Ok(())
