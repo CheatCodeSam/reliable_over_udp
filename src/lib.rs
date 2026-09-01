@@ -105,14 +105,12 @@ impl ReliableSocket {
 
                 self.socket.send_to(&send.into_bytes(), src)?;
                 packet_number_waiting_for = packet_number_waiting_for ^ 1;
-            } else if valid_checksum && !correct_packet_number {
-                let send = format!("ACK{packet_number}");
-                self.socket.send_to(&send.into_bytes(), src)?;
+                println!("{:?}", str::from_utf8(data)?);
             } else {
-                let send = format!("NAK{packet_number}");
+                // ACK the last header that was received, by flipping packet waiting for.
+                let send = format!("ACK{}", packet_number_waiting_for ^ 1);
                 self.socket.send_to(&send.into_bytes(), src)?;
             }
-            println!("{:?}", str::from_utf8(data)?);
         }
 
         Ok(())
