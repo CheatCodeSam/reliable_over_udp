@@ -1,7 +1,13 @@
 use anyhow::Result;
 use bytes::Bytes;
 use rand::prelude::*;
-use std::net::{SocketAddr, UdpSocket};
+use std::{
+    io::ErrorKind::{TimedOut, WouldBlock},
+    net::{SocketAddr, UdpSocket},
+    sync::mpsc::{self, Receiver},
+    thread,
+    time::Duration,
+};
 
 // TODO: Add real error handling
 
@@ -20,7 +26,6 @@ pub struct ReliableSocket {
 impl ReliableSocket {
     pub fn bind(addr: SocketAddr) -> Result<Self> {
         let socket = UdpSocket::bind(addr)?;
-
         Ok(Self {
             socket,
             sending_state: SenderState::WaitForCall,
@@ -28,6 +33,7 @@ impl ReliableSocket {
     }
 
     pub fn send_to(&mut self, buf: &Bytes, addr: SocketAddr) -> Result<()> {
+        self.socket.set_read_timeout(Some(Duration::new(5, 0)))?;
         let iter = buf.chunks(MSS_SIZE - 3);
 
         self.sending_state = SenderState::WaitForAck;
@@ -40,15 +46,24 @@ impl ReliableSocket {
 
             loop {
                 let mut ack_buffer = [0; MSS_SIZE];
-                let (amt, _src) = self.socket.recv_from(&mut ack_buffer)?;
-
-                let result = String::from_utf8_lossy(&ack_buffer[..amt]).to_string();
-                println!("{result}");
-                let expected_response = format!("ACK{packet_number}");
-                if result == expected_response {
-                    break;
-                } else {
-                    self.send_chunk(addr, chunk, packet_number)?;
+                match self.socket.recv_from(&mut ack_buffer) {
+                    Ok((amt, _src)) => {
+                        let result = String::from_utf8_lossy(&ack_buffer[..amt]).to_string();
+                        println!("{result}");
+                        let expected_response = format!("ACK{packet_number}");
+                        if result == expected_response {
+                            break;
+                        } else {
+                            self.send_chunk(addr, chunk, packet_number)?;
+                        }
+                    }
+                    Err(err) => match err.kind() {
+                        WouldBlock | TimedOut => {
+                            println!("WouldBlock!!!!");
+                            self.send_chunk(addr, chunk, packet_number)?;
+                        }
+                        _ => panic!("Error!!"),
+                    },
                 }
             }
         }
@@ -103,7 +118,12 @@ impl ReliableSocket {
                     send = "FES#".into();
                 }
 
-                self.socket.send_to(&send.into_bytes(), src)?;
+                //Randomlty drop ACKs
+                let random_number_2 = rng.random_range(0..=100) != 1;
+                if random_number_2 {
+                    self.socket.send_to(&send.into_bytes(), src)?;
+                }
+
                 packet_number_waiting_for = packet_number_waiting_for ^ 1;
                 println!("{:?}", str::from_utf8(data)?);
             } else {
