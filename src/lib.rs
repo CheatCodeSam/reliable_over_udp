@@ -119,7 +119,7 @@ impl ReliableSocket {
                 }
 
                 //Randomlty drop ACKs
-                let random_number_2 = rng.random_range(0..=100) != 1;
+                let random_number_2 = rng.random_range(0..=20) != 1;
                 if random_number_2 {
                     self.socket.send_to(&send.into_bytes(), src)?;
                 }
